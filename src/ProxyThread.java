@@ -14,6 +14,8 @@ public class ProxyThread implements Runnable {
 	private static final String EMPTY_LINE = "";
 	private static final String CLOSE = "Connection: close";
 	private static final String CONNECTION = "connection:";
+	private static final String PROXY = "Proxy-connection:";
+	private static final String CLOSE_PROXY = "Proxy-connection: close";
 	private static final String HOST = "host:";
 	private static final String HOST_CAPS = "Host: ";
 	private Socket socket;
@@ -30,7 +32,7 @@ public class ProxyThread implements Runnable {
 		// TODO Auto-generated method stub
 		try {
 			String host = "";
-			int port = 1000;
+			int port = 80; // default for http, 443 is default for https
 
 			// Http request: client --> server
 			BufferedReader request = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -50,10 +52,19 @@ public class ProxyThread implements Runnable {
 				// trim leading/trailing whitespace, split
 				curLine = curLine.trim();
 				String[] parts = curLine.split(" ");
-				// check, turn off keepalive
-				if (parts[0].toLowerCase().equals(CONNECTION)) {
+				String requestLine = "";
+				// handle the header change to HTML/1.0, this is request line
+				if (parts.length == 3 && parts[2].substring(0, 5).equals("HTTP/")) {
+					curLine = parts[0] + parts [1] + parts[2].substring(0, 5) + "1.0";
+					requestLine = parts[1];
+					
+					// check, turn off keepalive, replace anything that is a connection to clsoe
+				} else if (parts[0].toLowerCase().equals(CONNECTION)) {
 					curLine = CLOSE;
-				} else if (parts[0].toLowerCase().equals(HOST)) {
+				}
+				else if (parts[0].toLowerCase().equals(PROXY)) {
+					curLine = CLOSE_PROXY;
+				}else if (parts[0].toLowerCase().equals(HOST)) {
 					host = "";
 					// figure out the host to send to
 					for (int i = 1; i < parts.length; i++)
@@ -63,10 +74,13 @@ public class ProxyThread implements Runnable {
 					String[] hostParts = host.split(":");
 					if (hostParts.length == 2) {
 						port = Integer.valueOf(hostParts[1]).intValue();
-					}
+					}else if(requestLine != null && requestLine.toLowerCase().contains("https://")) {
+						port = 443;
+					} // otherwise the port remains as 80, default which is already set
 
 					curLine = HOST_CAPS + host; // now we have the host
-				}
+				} 
+				 
 
 				// read next line
 				appendHTTP(buffer, curLine);
