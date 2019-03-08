@@ -5,6 +5,8 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.UnknownHostException;
 
@@ -118,8 +120,27 @@ public class ProxyThread implements Runnable {
 			// bind socket to the specified host and port
 			Socket sock = new Socket(host, port);
 			InputStream serverResponse = sock.getInputStream();
+			PrintWriter clientRequest = 
+					new PrintWriter(new OutputStreamWriter(sock.getOutputStream()));
+			clientRequest.print(buff);
+			clientRequest.flush();
+			byte[] buf = new byte[32767]; // hold response from server, send to client
+			int numBytes = serverResponse.read(buf);
 			
-			
+			while (numBytes != -1) {
+				// write client response
+				out.write(buf, 0, numBytes);
+				out.flush();
+				
+				// read next line 
+				numBytes = serverResponse.read(buf);
+
+			}
+			// close everythign
+			clientRequest.close();
+			serverResponse.close();
+			sock.close();
+			out.close();
 			
 		}catch (UnknownHostException e) {
 			System.out.println(e.getMessage());
