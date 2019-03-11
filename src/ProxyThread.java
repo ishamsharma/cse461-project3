@@ -7,8 +7,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class ProxyThread implements Runnable {
 
@@ -33,120 +38,121 @@ public class ProxyThread implements Runnable {
 	public void run() {
 		// TODO Auto-generated method stub
 		try {
-			String host = "";
-			int port = 80; // default for http, 443 is default for https
-
-			// Http request: client --> server
 			BufferedReader request = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			String line = request.readLine();
+			String messg = "";
 
-			String curLine = request.readLine();
-
-			
-			DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-			StringBuffer buffer = new StringBuffer();
-			// first traverse thru message
-			for (int lines = 1; curLine != null && curLine.length() >= 0; lines++) {
-				// print first line
-				if (lines == 1) {
-					System.out.println(curLine);
-				}
-
-				// trim leading/trailing whitespace, split
-				curLine = curLine.trim();
-				String[] parts = curLine.split(" ");
-				String requestLine = "";
-				// handle the header change to HTML/1.0, this is request line
-				if (parts.length == 3 && parts[2].substring(0, 5).equals("HTTP/")) {
-					curLine = parts[0] + parts [1] + parts[2].substring(0, 5) + "1.0";
-					requestLine = parts[1];
-					
-					// check, turn off keepalive, replace anything that is a connection to clsoe
-				} else if (parts[0].toLowerCase().equals(CONNECTION)) {
-					curLine = CLOSE;
-				}
-				else if (parts[0].toLowerCase().equals(PROXY)) {
-					curLine = CLOSE_PROXY;
-				}else if (parts[0].toLowerCase().equals(HOST)) {
-					host = "";
-					// figure out the host to send to
-					for (int i = 1; i < parts.length; i++)
-						host += parts[i];
-
-					// get port
-					String[] hostParts = host.split(":");
-					if (hostParts.length == 2) {
-						port = Integer.valueOf(hostParts[1]).intValue();
-					}else if(requestLine != null && requestLine.toLowerCase().contains("https://")) {
-						port = 443;
-					} // otherwise the port remains as 80, default which is already set
-
-					curLine = HOST_CAPS + host; // now we have the host
-				} 
-				 
-
-				// read next line
-				appendHTTP(buffer, curLine);
-				curLine = request.readLine();
-
+			// read the message that arrives until it is completed
+			while (line != null && line.length() > 1) {
+				System.err.println(line);
+				messg += line + "\n";
+				line = request.readLine();
 			}
-			appendHTTP(buffer, EMPTY_LINE);
-			if (host != null) {
-				// --> server, then server --> client
-				request(buffer, output, host, port);
-			}
-			request.close();
+			if (messg.contains("CONNECT")) {
+				prepareHeader(messg, true);
 
-		} catch (NumberFormatException e) {
-			System.out.println(e.getMessage());
+			} else {
+				prepareHeader(messg, false);
+			}
+
 		} catch (IOException e) {
-			System.out.println(e.getMessage());
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
+
 	}
-	// adds HTTP line info
-	public void appendHTTP(StringBuffer output, String val) {
-		if (output == null || val == null) {
-			throw new IllegalArgumentException();
+
+	public void prepareHeader(String messg, boolean isConnect) {
+		String host = "";
+		int port = -1;
+
+		if (!isConnect) {
+			// if not a connection, we want to replace the message
+			messg = messg.replace("Connection: keep-alive", CLOSE);
+			messg = messg.replace("Proxy-connection: keep-alive", CLOSE_PROXY);
+			messg = messg.replace("HTTP/1.1", "HTTP/1.0");
 		}
-		if (val.equals(EMPTY_LINE)) {
-			output.append(HTTP_END_LINE);
-		}else {
-			output.append(val + HTTP_END_LINE);
-		}
-	}
-	
-	public void request(StringBuffer buff, DataOutputStream out, 
-			  String host, int port) {
-		try {
-			// bind socket to the specified host and port
-			Socket sock = new Socket(host, port);
-			InputStream serverResponse = sock.getInputStream();
-			PrintWriter clientRequest = 
-					new PrintWriter(new OutputStreamWriter(sock.getOutputStream()));
-			clientRequest.print(buff);
-			clientRequest.flush();
-			byte[] buf = new byte[32767]; // hold response from server, send to client
-			int numBytes = serverResponse.read(buf);
-			
-			while (numBytes != -1) {
-				// write client response
-				out.write(buf, 0, numBytes);
-				out.flush();
+
+		messg = messg.replace("\r\n", "\n");
+		String[] messgParts = messg.split("\n");
+		SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+		Date date = new Date();
+		System.out.println(formatter.format(date) + "- >>> " + messgParts[0]);
+
+		// set host
+		for (int i = 0; i < messgParts.length; i++) {
+			// get first string "word", see if it is host
+			if (messgParts[i].split(" ")[0].toLowerCase().equals("host:")) {
+				String hostPort = messgParts[i].split(" ")[1];
+				String[] hostParts = hostPort.split(":");
+				host = hostParts[0];
+				if (hostParts.length > 1) {
+					port = Integer.parseInt(hostParts[1]);
+				}
 				
-				// read next line 
-				numBytes = serverResponse.read(buf);
-
 			}
-			// close everythign
-			clientRequest.close();
-			serverResponse.close();
-			sock.close();
-			out.close();
-			
-		}catch (UnknownHostException e) {
-			System.out.println(e.getMessage());
-		} catch (IOException e) {
-			System.out.println(e.getMessage());
 		}
+
+		// set port
+		if (port == -1) {
+			if (messg.contains("https://")) {
+				port = 443;
+			} else {
+				port = 80;
+			}
+		}
+
+		String newRequest = messg.replace(host, "");
+		newRequest = newRequest.replace("http://", "");
+		newRequest = newRequest.replace("https://", "");
+		InetAddress fullHostname = null;
+		try {
+			fullHostname = InetAddress.getAllByName(host)[0];
+		} catch (UnknownHostException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+
+		Socket sock = null;
+		try {
+			sock = new Socket(fullHostname, port);
+			
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		if (!isConnect) {
+			try {
+				System.err.println("not connect");
+				OutputStreamWriter writer = (new OutputStreamWriter(sock.getOutputStream()));
+				writer.write(newRequest);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+			sendNonConnect(sock);
+		} else {
+			try {
+				System.err.println("connect");
+				OutputStreamWriter writer = (new OutputStreamWriter(socket.getOutputStream()));
+				writer.write("HTTP/1.0 200 OK\r\n\r\n");
+				writer.write(messg);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+			sendConnect(sock);
+		}
+	}
+
+	public void sendConnect(Socket s) {
+		System.err.println("in here!");
+	}
+
+	public void sendNonConnect(Socket s) {
+
 	}
 
 }

@@ -30,10 +30,12 @@ public class Main {
 		int port = 1000;
 		if (args.length != 1) {
 			System.out.println("Need to specify port number");
-			System.exit(1);
+			port = 46103;
+			//System.exit(1);
 		}
 		try {
-			port = Integer.valueOf(args[0]).intValue();
+			//port = Integer.valueOf(args[0]).intValue();
+			port = 46103;
 			start(port);
 		} catch (NumberFormatException e) {
 			System.out.println("NumberFormat: " + e.getMessage());
