@@ -1,30 +1,19 @@
 package src;
 
 import java.io.BufferedReader;
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class ProxyThread implements Runnable {
 
-	private static final String HTTP_END_LINE = "\r\n";
-	private static final String EMPTY_LINE = "";
 	private static final String CLOSE = "Connection: close";
-	private static final String CONNECTION = "connection:";
-	private static final String PROXY = "Proxy-connection:";
 	private static final String CLOSE_PROXY = "Proxy-connection: close";
-	private static final String HOST = "host:";
-	private static final String HOST_CAPS = "Host: ";
 	private Socket socket;
 
 	public ProxyThread(Socket socket) {
@@ -77,7 +66,7 @@ public class ProxyThread implements Runnable {
 		String[] messgParts = messg.split("\n");
 		SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 		Date date = new Date();
-		System.out.println(formatter.format(date) + "- >>> " + messgParts[0]);
+		System.out.println(formatter.format(date) + " - >>> " + messgParts[0]);
 
 		// set host
 		for (int i = 0; i < messgParts.length; i++) {
@@ -134,10 +123,11 @@ public class ProxyThread implements Runnable {
 			sendNonConnect(sock);
 		} else {
 			try {
+				
 				System.err.println("connect");
 				OutputStreamWriter writer = (new OutputStreamWriter(socket.getOutputStream()));
-				writer.write("HTTP/1.0 200 OK\r\n\r\n");
-				writer.write(messg);
+				writer.write("HTTP 200 OK");
+				
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -149,6 +139,8 @@ public class ProxyThread implements Runnable {
 
 	public void sendConnect(Socket s) {
 		System.err.println("in here!");
+		
+	
 	}
 
 	public void sendNonConnect(Socket s) {
