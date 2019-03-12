@@ -34,7 +34,7 @@ public class ProxyThread implements Runnable {
 			String messg = "";
 
 			// read the message that arrives until it is completed
-			while (line != null && line.length() > 1) {
+			while (line != null && !line.isEmpty()) {
 				System.err.println(line);
 				messg += line + "\n";
 				line = request.readLine();
@@ -48,6 +48,7 @@ public class ProxyThread implements Runnable {
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
+		
 			e.printStackTrace();
 		}
 
@@ -122,154 +123,22 @@ public class ProxyThread implements Runnable {
 				e.printStackTrace();
 			}
 
-			sendNonConnect(sock);
+		
 		} else {
 			try {
 
 				System.err.println("connect");
 				OutputStreamWriter writer = (new OutputStreamWriter(socket.getOutputStream()));
 				writer.write("HTTP 200 OK");
+				Thread serverThread = new Thread(new ServerThread(socket.getInputStream(), sock.getOutputStream()));
+				serverThread.start();
 
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 
-			sendConnect(sock);
-		}
-	}
-
-	public void sendConnect(Socket s) {
-		System.err.println("in here!");
-		while (true) {
-			boolean flag1 = false;
-			boolean flag2 = false;
-			while (true) {
-				try {
-					DataInputStream input = new DataInputStream(socket.getInputStream());
-					byte[] receive = new byte[8072];
-					input.read(receive);
-
-					if (receive.length == 0) {
-						break;
-					}
-					DataOutputStream output = new DataOutputStream(s.getOutputStream());
-					output.write(receive);
-					flag1 = true;
-
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-
-			// now, try receive from server and send bak to client
-			while (true) {
-				try {
-					DataInputStream input = new DataInputStream(s.getInputStream());
-					byte[] receive = new byte[8072];
-					input.read(receive);
-
-					if (receive.length == 0) {
-						break;
-					}
-					DataOutputStream output = new DataOutputStream(s.getOutputStream());
-					output.write(receive);
-					flag2 = true;
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-
-			if (!flag1 && !flag2) {
-				try {
-					s.close();
-					socket.close();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-
-				break;
-			}
-		}
-
-	}
-
-	public void sendNonConnect(Socket s) {
-
-		while (true) {
-			try {
-				// receive from client
-				DataInputStream input = new DataInputStream(socket.getInputStream());
-				byte[] receive = new byte[8072];
-				input.read(receive);
-
-				if (receive.length == 0) {
-					break;
-				}
-				DataOutputStream output = new DataOutputStream(s.getOutputStream());
-				output.write(receive);
-
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		String header = "";
-		while(true) {
-			DataInputStream input;
-			try {
-				input = new DataInputStream(s.getInputStream());
-				byte[] receive = new byte[8072];
-				input.read(receive);
-				header += receive;
-				if (header.contains("\r\n\r\n")|| header.contains("\n\n") || header.contains("\n\r\n")) {
-					break;
-				}
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
 			
-		}
-		header = header.replace("Connection: keep-alive", CLOSE);
-		header = header.replace("Proxy-connection: keep-alive", CLOSE_PROXY);
-		
-		try {
-			DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-			output.write(header.getBytes());
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-
-		
-		// now, try receive from server and send bak to client
-		while (true) {
-			try {
-				DataInputStream input = new DataInputStream(s.getInputStream());
-				byte[] receive = new byte[8072];
-				input.read(receive);
-
-				if (receive.length == 0) {
-					break;
-				}
-				DataOutputStream output = new DataOutputStream(s.getOutputStream());
-				output.write(receive);
-
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		try {
-			s.close();
-			socket.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
 		}
 	}
 
