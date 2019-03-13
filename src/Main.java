@@ -3,6 +3,8 @@ package src;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class Main {
 	
@@ -10,6 +12,9 @@ public class Main {
 		ServerSocket servSock = null;
 		try {
 			servSock = new ServerSocket(port);
+			SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+			Date date = new Date();
+			System.out.println(formatter.format(date) + " - >>> Proxy listening on " + port);
 			while (true) {
 				Socket sock = servSock.accept();
 				Thread t = new Thread(new ProxyThread(sock));
@@ -30,12 +35,12 @@ public class Main {
 		int port = 1000;
 		if (args.length != 1) {
 			System.out.println("Need to specify port number");
-			port = 46103;
-			//System.exit(1);
+			
+			System.exit(1);
 		}
 		try {
-			//port = Integer.valueOf(args[0]).intValue();
-			port = 46103;
+			port = Integer.valueOf(args[0]).intValue();
+			//port = 46103;
 			start(port);
 		} catch (NumberFormatException e) {
 			System.out.println("NumberFormat: " + e.getMessage());

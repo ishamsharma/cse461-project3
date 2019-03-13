@@ -1,0 +1,12 @@
+#!/bin/sh
+
+javac Main.java
+javac ProxyThread.java
+javac ServerThread.java
+
+if [ $# -ne 1 ]; then
+    echo "Need to supply port number"
+    exit 1
+fi
+
+java Main $1
