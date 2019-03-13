@@ -1,144 +1,153 @@
 package src;
 
-import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.net.UnknownHostException;
+import java.io.*;
+import java.net.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class ProxyThread implements Runnable {
 
-	private static final String CLOSE = "Connection: close";
-	private static final String CLOSE_PROXY = "Proxy-connection: close";
-	private Socket socket;
+	private final Socket socket;
 
 	public ProxyThread(Socket socket) {
-		if (socket == null) {
-			throw new IllegalArgumentException();
-		}
 		this.socket = socket;
 	}
 
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
 		try {
-			BufferedReader request = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			String line = request.readLine();
-			String messg = "";
+			InputStream in = socket.getInputStream();
+			BufferedReader buffer = new BufferedReader(new InputStreamReader(in));
+			OutputStream out = socket.getOutputStream();
 
-			// read the message that arrives until it is completed
-			while (line != null && !line.isEmpty()) {
-				System.err.println(line);
-				messg += line + "\n";
-				line = request.readLine();
-			}
-			if (messg.contains("CONNECT")) {
-				prepareHeader(messg, true);
+			String data;
+			String host = null;
+			String hostLine = null;
 
-			} else {
-				prepareHeader(messg, false);
-			}
+			boolean isConnect = false;
+			String answer = "";
 
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-		
-			e.printStackTrace();
-		}
+			while (true) {
+				data = buffer.readLine();
 
-	}
-
-	public void prepareHeader(String messg, boolean isConnect) {
-		String host = "";
-		int port = -1;
-
-		if (!isConnect) {
-			// if not a connection, we want to replace the message
-			messg = messg.replace("Connection: keep-alive", CLOSE);
-			messg = messg.replace("Proxy-connection: keep-alive", CLOSE_PROXY);
-			messg = messg.replace("HTTP/1.1", "HTTP/1.0");
-		}
-
-		messg = messg.replace("\r\n", "\n");
-		String[] messgParts = messg.split("\n");
-		SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-		Date date = new Date();
-		System.out.println(formatter.format(date) + " - >>> " + messgParts[0]);
-
-		// set host
-		for (int i = 0; i < messgParts.length; i++) {
-			// get first string "word", see if it is host
-			if (messgParts[i].split(" ")[0].toLowerCase().equals("host:")) {
-				String hostPort = messgParts[i].split(" ")[1];
-				String[] hostParts = hostPort.split(":");
-				host = hostParts[0];
-				if (hostParts.length > 1) {
-					port = Integer.parseInt(hostParts[1]);
+				if (data == null) {
+					return;
+				} else if (data.isEmpty()) {
+					break;
+				} else if (data.contains("CONNECT")) {
+					isConnect = true;
 				}
 
-			}
-		}
+				if (isConnect || data.contains("GET") || data.contains("PUT") || data.contains("POST")) {
+					SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+					Date date = new Date();
+					
 
-		// set port
-		if (port == -1) {
-			if (messg.contains("https://")) {
-				port = 443;
+					String[] words = data.split(" ");
+					if(words[0].equals("GET") || words[0].equals("CONNECT") || words[0].equals("PUT") || words[0].equals("POST")) {
+						System.out.println(formatter.format(date) + " - >>> " + data);
+					}
+					host = words[1];
+					answer += words[0] + " " + host + " HTTP/1.0";
+
+					if (!host.toLowerCase().contains("http")) {
+						host = "http://" + host;
+					}
+				} else {
+					String lower_data = data.toLowerCase();
+					if (lower_data.contains("proxy-connection")) {
+						answer += "Proxy-Connection: close";
+					} else if (lower_data.contains("connection")) {
+						answer += "Connection: close";
+					} else {
+						if (lower_data.contains("host")) {
+							hostLine = data;
+						}
+						answer += data;
+					}
+				}
+				answer += "\r\n";
+			}
+
+			int port = getPort(host, hostLine);
+			// Is it possible to replace these two lines?
+			InetAddress address = InetAddress.getByName(new URL(host).getHost());
+			String addString = address.getHostAddress();
+
+			if (isConnect) {
+				sendConnect(addString, port, in, out);
 			} else {
-				port = 80;
+				sendNonConnect(addString, port, answer, out);
 			}
-		}
 
-		String newRequest = messg.replace(host, "");
-		newRequest = newRequest.replace("http://", "");
-		newRequest = newRequest.replace("https://", "");
-		InetAddress fullHostname = null;
-		try {
-			fullHostname = InetAddress.getAllByName(host)[0];
-		} catch (UnknownHostException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-
-		Socket sock = null;
-		try {
-			sock = new Socket(fullHostname, port);
-
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		if (!isConnect) {
+	}
+
+	private void sendNonConnect(String addString, int port, String answer, OutputStream clientOut)
+			throws MalformedURLException, UnknownHostException {
+
+		try {
+			Socket proxSox = new Socket(addString, port);
+			byte[] bytes = new byte[8027];
+			PrintWriter out = new PrintWriter(proxSox.getOutputStream(), true);
+			InputStream inStream = proxSox.getInputStream();
+			out.println(answer);
+			inStream.read(bytes);
+			clientOut.write(bytes);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void sendConnect(String addString, int port, InputStream in, OutputStream out) throws Exception {
+
+		try {
+			Socket proxSox = new Socket(addString, port);
+			out.write("HTTP 200 OK\r\n\r\n".getBytes());
 			try {
-				System.err.println("not connect");
-				OutputStreamWriter writer = (new OutputStreamWriter(sock.getOutputStream()));
-				writer.write(newRequest);
+				ServerThread servThread = new ServerThread(in, proxSox.getOutputStream());
+				Thread clientThread = new Thread(servThread);
+				clientThread.start();
+				InputStream servInput = proxSox.getInputStream();
+				int byteRead = servInput.read();
+				while (byteRead != -1) {
+					out.write(byteRead);
+					byteRead = servInput.read();
+				}
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
+		} catch (IOException e) {
+			out.write("HTTP 502 Bad Gateway".getBytes());
+			e.printStackTrace();
+		}
+	}
 
-		
+	private int getPort(String host, String hostLine) {
+		int pos;
+		try {
+			if (hostLine != null) {
+				String[] parts = hostLine.split(" ")[1].split(":");
+				pos = parts.length - 1;
+				if (Integer.parseInt(parts[pos]) != -1) {
+					return Integer.parseInt(parts[pos]);
+				}
+			}
+			if (host != null) {
+				String[] parts2 = host.split(":");
+				pos = parts2.length - 1;
+				if (Integer.parseInt(parts2[pos]) != -1) {
+					return Integer.parseInt(parts2[pos]);
+				}
+			}
+		} catch (NumberFormatException e) {
+		}
+		if (host.toLowerCase().contains("https")) {
+			return 443;
 		} else {
-			try {
-
-				System.err.println("connect");
-				OutputStreamWriter writer = (new OutputStreamWriter(socket.getOutputStream()));
-				writer.write("HTTP 200 OK");
-				Thread serverThread = new Thread(new ServerThread(socket.getInputStream(), sock.getOutputStream()));
-				serverThread.start();
-
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-
-			
+			return 80;
 		}
 	}
 
